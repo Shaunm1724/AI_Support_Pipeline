@@ -1,6 +1,7 @@
 import sqlite3
 import os
 from dotenv import load_dotenv
+import time
 
 # LlamaIndex Imports
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
@@ -72,21 +73,31 @@ def process_high_priority_tickets(query_engine):
         Do not make up policies. Keep the response concise (under 4 sentences).
         """
 
-        # Query the RAG engine
         print("Thinking...")
-        response = query_engine.query(prompt)
-        drafted_reply = str(response)
         
-        print("Drafted Reply:")
-        print(f"\033[92m{drafted_reply}\033[0m") # Prints in green
-        print("-" * 40)
+        # --- NEW: Error Handling and Rate Limiting ---
+        try:
+            response = query_engine.query(prompt)
+            drafted_reply = str(response)
+            
+            print("Drafted Reply:")
+            print(f"\033[92m{drafted_reply}\033[0m")
+            print("-" * 40)
 
-        # Update the database
-        cursor.execute('''
-            UPDATE support_tickets
-            SET agent_draft = ?, status = 'Ready for Review'
-            WHERE id = ?
-        ''', (drafted_reply, ticket_id))
+            # Update the database
+            cursor.execute('''
+                UPDATE support_tickets
+                SET agent_draft = ?, status = 'Ready for Review'
+                WHERE id = ?
+            ''', (drafted_reply, ticket_id))
+            
+            # Pause for 4.5 seconds to respect the 15 requests/minute limit
+            time.sleep(4.5) 
+            
+        except Exception as e:
+            print(f"API Error encountered: {e}")
+            print("Pausing for 10 seconds before continuing to avoid rate limits...")
+            time.sleep(10)
 
     # Update low priority tickets
     cursor.execute("UPDATE support_tickets SET status = 'Closed - No Action Needed' WHERE status = 'Triaged' AND priority = 'Low'")
